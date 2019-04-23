@@ -90,6 +90,26 @@ rpartTestProb <- predict(rpart, newdata = testdata, type = "prob",
 
 confusionMatrix(testdata$Survived, rpartTest)
 
+# rpart with bagImpute ----------------------------------------------------
+
+set.seed(1234)
+rpartbagImpute <- train(Survived~., data = traindata, trControl = trCtr,
+                        method = "rpart", metric = "ROC", tuneLength = 30,
+                        preProcess = "bagImpute", na.action = na.pass)
+rpartbagImpute
+rpartbagImputeTest <- predict(rpartbagImpute, newdata = testdata, 
+                              na.action = na.pass)
+rpartbagImputeTestProb <- predict(rpartbagImpute, newdata = testdata, type = "prob",
+                                  na.action = na.pass)
+
+confusionMatrix(testdata$Survived, rpartbagImputeTest)
+
+# c5.0 --------------------------------------------------------------------
+
+set.seed(1234)
+C5.0 <- train(Survived~., data = traindata, trControl = trCtr,
+              method = "C5.0", metric = "ROC", )
+
 # ROC curve ---------------------------------------------------------------
 
 library(pROC)
@@ -111,6 +131,11 @@ rpartROC <- roc(predictor = rpartTestProb$Lived,
                 levels = rev(levels(testdata$Survived)),
                 plot = T,
                 print.auc = T, add = T, col = "blue", print.auc.y = 0.7)
+rpartbagImputeROC <- roc(predictor = rpartbagImputeTestProb$Lived,
+                         response = testdata$Survived,
+                         levels = rev(levels(testdata$Survived)),
+                         plot = TRUE,
+                         print.auc = T, add = T, col = "yellow", print.auc.y = 0.4)
 
 
 # Extract data from ROC ---------------------------------------------------
