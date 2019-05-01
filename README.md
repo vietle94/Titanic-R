@@ -54,16 +54,25 @@ glimpse(train0)
     ## $ Embarked    <fct> S, C, S, S, S, Q, S, S, S, C, S, S, S, S, S, S, Q,...
 
 We can see that: - PassengerID is just a sequence of number to
-distinguish passengers, hence it has no predictive power. - Name follows
-a pattern with Familyname, Title and Firstname, it shows a potential to
-extract those components - SibSp and Parch: aren’t those in the same
-family have the same familyname? Possibly have a relationship with
-family name - Ticket does not follow any obvious pattern - A lot of
-missing values in Cabin
+distinguish passengers, hence it has no predictive power.
+
+  - Name follows a pattern with Familyname, Title and Firstname, it
+    shows a potential to extract those components
+
+  - SibSp and Parch: aren’t those in the same family have the same
+    familyname? Possibly have a relationship with family name
+
+  - Ticket does not follow any obvious pattern
+
+  - A lot of missing values in Cabin
 
 ## Dealing with NA
 
-How many NA values? - in train set
+How many NA values?
+
+  - in train set
+
+<!-- end list -->
 
 ``` r
 train0 %>% map_df(~sum(is.na(.)))
@@ -89,15 +98,23 @@ test0 %>% map_df(~sum(is.na(.)))
     ## 1           0      0     0     0    86     0     0      0     1   327
     ## # ... with 1 more variable: Embarked <int>
 
-Dealing with NA: - Remove Cabin as there are too much NA - Using median
-for Fare, only 1 value is missing - Using the highest frequency value
-for Embarked - The only predictor relating to Age is Name (Title e.g Mr,
-Miss, etc), so missing Age is replace by the mean of Age of people with
-the same title. Other methods like knnImpute or BagImpute or even some
-models which can handle NA values can be used to impute. However, those
-seems unnecessary complicated methods since they consider all other
-predictors to find NA values, We certainly know that only some
-predictors are directly relating predictors with missing
+Dealing with NA:
+
+  - Remove Cabin as there are too much NA
+
+  - Using median for Fare, only 1 value is missing
+
+  - Using the highest frequency value for Embarked
+
+  - The only predictor relating to Age is Name (Title e.g Mr, Miss,
+    etc), so missing Age is replace by the mean of Age of people with
+    the same title.
+
+  - Other methods like knnImpute or BagImpute or even some models which
+    can handle NA values can be used to impute. However, those seems
+    unnecessary complicated methods since they consider all other
+    predictors to find NA values, We certainly know that only some
+    predictors are directly relating predictors with missing
 NA.
 
 ## Visualization
@@ -124,7 +141,11 @@ p1 + p2
 ![](Figures/README-unnamed-chunk-8-1.png)<!-- -->
 
 There is a patern in Fare in relation with Survived. More expensive
-ticket, higher chance to Survive (to an extend). Good
+ticket, higher chance to Survive (to an extend).
+
+<br>
+
+Good
 predictor
 
 ### Pclass
@@ -146,9 +167,16 @@ train0 %>% ggplot() + geom_boxplot(aes(fct_reorder(Pclass,Fare), Fare)) + scale_
 ![](Figures/README-unnamed-chunk-10-1.png)<!-- -->
 
 The cost of Ticket increases from PClass 3 (cheapest) to Pclass 1 (most
-expensive). This makes sense as the upper class who stayed in Pclass 1
-would have more money hence have better chance to survive. Good
-predictor
+expensive).
+
+<br>
+
+This makes sense as the upper class who stayed in Pclass 1 would have
+more money hence have better chance to survive.
+
+<br>
+
+Good predictor
 
 ### Sex
 
@@ -159,7 +187,11 @@ train0 %>% ggplot() + geom_bar(aes(Sex, fill = Survived))
 ![](Figures/README-unnamed-chunk-11-1.png)<!-- -->
 
 Female have better survival rate as women and children are usually being
-rescued first. Good
+rescued first.
+
+<br>
+
+Good
 predictor
 
 # Data transformation
@@ -206,8 +238,7 @@ look
 combined[1:intrain,] %>% ggplot() + geom_bar(aes(Title, fill = fct_relevel(Survived, "Died"))) + labs(fill = "Survived")
 ```
 
-![](Figures/README-unnamed-chunk-17-1.png)<!-- --> Good predictor.
-
+![](Figures/README-unnamed-chunk-17-1.png)<!-- --> Good predictor. <br>
 In combination with Pclass, we can see a more detail picture.
 
 ``` r
