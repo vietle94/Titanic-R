@@ -1,6 +1,13 @@
 Titanic analysis
 ================
 
+<style>
+    body .main-container {
+        max-width: 2900px;
+    }
+    div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
+</style>
+
 # Load library
 
 ``` r
@@ -127,7 +134,7 @@ p2<- train0 %>% ggplot() + geom_histogram(aes(Fare, fill = Survived), position =
 p1 + p2
 ```
 
-![](Figures/README-unnamed-chunk-7-1.png)<!-- -->
+<img src="Figures/README-unnamed-chunk-7-1.png" style="display: block; margin: auto;" />
 
 Distibution of Fare is skewed to the right, transform it with log10 to
 normalize
@@ -138,7 +145,7 @@ p2<- train0 %>% ggplot() + geom_histogram(aes(log10(Fare+1), fill = Survived), p
 p1 + p2
 ```
 
-![](Figures/README-unnamed-chunk-8-1.png)<!-- -->
+<img src="Figures/README-unnamed-chunk-8-1.png" style="display: block; margin: auto;" />
 
 There is a patern in Fare in relation with Survived. More expensive
 ticket, higher chance to Survive (to an extend).
@@ -154,7 +161,7 @@ predictor
 train0 %>% ggplot() + geom_bar(aes(fct_relevel(Pclass, "1", "2"), fill = Survived)) + scale_x_discrete(name = "Pclass")
 ```
 
-![](Figures/README-unnamed-chunk-9-1.png)<!-- -->
+<img src="Figures/README-unnamed-chunk-9-1.png" style="display: block; margin: auto;" />
 
 Pclass 1 \> Pclass 2 \> Pclass 3 in survival rate and there are much
 more people in Pclass 3 than Pclass 1 and
@@ -164,7 +171,7 @@ more people in Pclass 3 than Pclass 1 and
 train0 %>% ggplot() + geom_boxplot(aes(fct_reorder(Pclass,Fare), Fare)) + scale_x_discrete(name = "Pclass")
 ```
 
-![](Figures/README-unnamed-chunk-10-1.png)<!-- -->
+<img src="Figures/README-unnamed-chunk-10-1.png" style="display: block; margin: auto;" />
 
 The cost of Ticket increases from PClass 3 (cheapest) to Pclass 1 (most
 expensive).
@@ -176,7 +183,8 @@ more money hence have better chance to survive.
 
 <br>
 
-Good predictor
+Good
+predictor
 
 ### Sex
 
@@ -184,7 +192,7 @@ Good predictor
 train0 %>% ggplot() + geom_bar(aes(Sex, fill = Survived))
 ```
 
-![](Figures/README-unnamed-chunk-11-1.png)<!-- -->
+<img src="Figures/README-unnamed-chunk-11-1.png" style="display: block; margin: auto;" />
 
 Female have better survival rate as women and children are usually being
 rescued first.
@@ -238,8 +246,9 @@ look
 combined[1:intrain,] %>% ggplot() + geom_bar(aes(Title, fill = fct_relevel(Survived, "Died"))) + labs(fill = "Survived")
 ```
 
-![](Figures/README-unnamed-chunk-17-1.png)<!-- --> Good predictor. <br>
-In combination with Pclass, we can see a more detail picture.
+<img src="Figures/README-unnamed-chunk-17-1.png" style="display: block; margin: auto;" />
+Good predictor. <br> In combination with Pclass, we can see a more
+detail picture.
 
 ``` r
 combined[1:intrain,] %>% 
@@ -250,7 +259,7 @@ combined[1:intrain,] %>%
   ggplot() + geom_tile(aes(fct_relevel(Pclass,"1","2"), fct_relevel(Title,"Master", "Miss", "Mrs", "Mr"), fill = Survivalrate)) + scale_fill_viridis_c() + xlab("Pclass") + ylab("Title")
 ```
 
-![](Figures/README-unnamed-chunk-18-1.png)<!-- -->
+<img src="Figures/README-unnamed-chunk-18-1.png" style="display: block; margin: auto;" />
 
 ## Make Missingage predictor before we impute Age
 

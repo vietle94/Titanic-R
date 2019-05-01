@@ -3,6 +3,12 @@ title: "Titanic analysis"
 output: 
   rmarkdown::github_document
 ---
+<style>
+    body .main-container {
+        max-width: 2900px;
+    }
+    div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
+</style>
 
 ```{r, echo = FALSE}
 knitr::opts_chunk$set(
@@ -90,7 +96,7 @@ Dealing with NA:
 
 ### Fare 
 
-```{r message=F, warning=F}
+```{r message=F, warning=F, fig.align="center", fig.width=12, fig.height=6}
 p1 <- train0 %>% ggplot() + geom_histogram(aes(Fare, fill = Survived)) + labs(title = "Histogram of Fare \nin relation with Survived")
 p2<- train0 %>% ggplot() + geom_histogram(aes(Fare, fill = Survived), position = "fill") + labs(title = "Percentage of Fare \nin relation with Survived")
 p1 + p2
@@ -99,7 +105,7 @@ p1 + p2
 
 Distibution of Fare is skewed to the right, transform it with log10 to normalize
 
-```{r message=F, warning=F}
+```{r message=F, warning=F, fig.align="center", fig.width=12, fig.height=6}
 p1 <- train0 %>% ggplot() + geom_histogram(aes(log10(Fare+1), fill = Survived)) + labs(title = "Histogram of Fare \nin relation with Survived")
 p2<- train0 %>% ggplot() + geom_histogram(aes(log10(Fare+1), fill = Survived), position = "fill") + labs(title = "Percentage of Fare \nin relation with Survived")
 p1 + p2
@@ -113,13 +119,13 @@ Good predictor
 
 ### Pclass
 
-```{r}
+```{r, fig.align="center", fig.width=12, fig.height=6}
 train0 %>% ggplot() + geom_bar(aes(fct_relevel(Pclass, "1", "2"), fill = Survived)) + scale_x_discrete(name = "Pclass")
 ```
 
 Pclass 1 > Pclass 2 > Pclass 3 in survival rate and there are much more people in Pclass 3 than Pclass 1 and 2. 
 
-```{r}
+```{r, fig.align="center", fig.width=12, fig.height=6}
 train0 %>% ggplot() + geom_boxplot(aes(fct_reorder(Pclass,Fare), Fare)) + scale_x_discrete(name = "Pclass")
 ```
 
@@ -135,7 +141,7 @@ Good predictor
 
 ### Sex
 
-```{r}
+```{r, fig.align="center", fig.width=12, fig.height=6}
 train0 %>% ggplot() + geom_bar(aes(Sex, fill = Survived))
 ```
 
@@ -187,14 +193,14 @@ combined <- combined %>%
 
 How this Title predictor look
 
-```{r}
+```{r, fig.align="center", fig.width=12, fig.height=6}
 combined[1:intrain,] %>% ggplot() + geom_bar(aes(Title, fill = fct_relevel(Survived, "Died"))) + labs(fill = "Survived")
 ```
 Good predictor.
 <br>
 In combination with Pclass, we can see a more detail picture.
 
-```{r}
+```{r, fig.align="center", fig.width=12, fig.height=6}
 combined[1:intrain,] %>% 
     group_by(Title, Pclass, Survived) %>% 
     summarise(each = n()) %>% ungroup() %>% group_by(Title, Pclass) %>% mutate(Tot = sum(each)) %>%
