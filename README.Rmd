@@ -1,7 +1,7 @@
 ---
 title: "Titanic analysis"
 output: 
-  rmarkdown::github_document
+  rmarkdown::md_document
 ---
 
 
@@ -10,7 +10,7 @@ knitr::opts_chunk$set(
   fig.path = "Figures/README-"
 )
 ```
-# Load library
+# Load library --------------------------------------------------------------
 
 ```{r message=FALSE}
 library(tidyverse)
@@ -23,7 +23,7 @@ library(pROC)
 library(partykit)
 ```
 
-# Load data
+# Load data --------------------------------------------------------------
 
 ```{r}
 
@@ -45,7 +45,7 @@ test0 <- read_csv("./titanic/test.csv",
 ```
 
 
-# Data exploration
+# Data exploration --------------------------------------------------------------
 
 First glimpse at our data
 
@@ -94,7 +94,7 @@ Dealing with NA:
 
 ### Fare 
 
-```{r message=F, warning=F, fig.align="center", fig.width=12, fig.height=6}
+```{r ,message=F, warning=F, fig.align="center", fig.width=12, fig.height=6}
 p1 <- train0 %>% ggplot() + geom_histogram(aes(Fare, fill = Survived)) + labs(title = "Histogram of Fare \nin relation with Survived")
 p2<- train0 %>% ggplot() + geom_histogram(aes(Fare, fill = Survived), position = "fill") + labs(title = "Percentage of Fare \nin relation with Survived")
 p1 + p2
@@ -103,7 +103,7 @@ p1 + p2
 
 Distibution of Fare is skewed to the right, transform it with log10 to normalize
 
-```{r message=F, warning=F, fig.align="center", fig.width=12, fig.height=6}
+```{r ,message=F, warning=F, fig.align="center", fig.width=12, fig.height=6}
 p1 <- train0 %>% ggplot() + geom_histogram(aes(log10(Fare+1), fill = Survived)) + labs(title = "Histogram of Fare \nin relation with Survived")
 p2<- train0 %>% ggplot() + geom_histogram(aes(log10(Fare+1), fill = Survived), position = "fill") + labs(title = "Percentage of Fare \nin relation with Survived")
 p1 + p2
@@ -149,7 +149,7 @@ Female have better survival rate as women and children are usually being rescued
 
 Good predictor
 
-# Data transformation
+# Data transformation --------------------------------------------------------------
 
 ## Combine test and train for feature selection
 
@@ -428,7 +428,7 @@ modelList <- caretList(
 )
 ```
 
-# Evaluation
+# Evaluation --------------------------------------------------------------
 
 ## Evaluate in train data
 
@@ -490,7 +490,7 @@ map(modelList, ~predict(., newdata = holdout)) %>%
 
 ROC and AUC
 
-```{r}
+```{r, warning = F}
 modROC <- map(modelList, ~predict(. , newdata = holdout, type = "prob")) %>% 
   map(~roc(predictor = .x$Lived,
            response = holdout$Survived,
@@ -525,7 +525,7 @@ Ranking on best performance:
 
 Extract best tunes from models then train them again using all training data with no resampling method. After that, predict data on test data and print csv out to put on kaggle
 
-```{r}
+```{r, eval = FALSE}
 set.seed(6759)
 
 rf_f <- train(formula, data = alltrain, trControl = trCtr_none, method = "rf",
@@ -569,11 +569,11 @@ Results are
 
 - Single Decision tree at 0.77511
 
-# Using other set of predictors
+# Using other set of predictors --------------------------------------------------------------
 
 Let's see if we can improve the results from test set by using other set of predictors on to train on all data available
 
-```{r}
+```{r, eval = FALSE}
 
 formula1 <- as.formula(Survived ~ Pclass + Sex + Title +
                         Groupsize + 
@@ -621,17 +621,14 @@ Results are:
 
 We can see a significant increase in accuracy using Random Forest with less predictors hence less overfitting. A slight improvement can be observed in other models except for C5.0
 
-# Using other set of predictors
+# Using other set of predictors --------------------------------------------------------------
 
-```{r}
-
+```{r, eval = FALSE}
 formula2 <- as.formula(Survived ~ Pclass + Title +
-                        Groupsize + 
+                         Groupsize + 
                         Fare + Embarked)
 
-
 set.seed(67659)
-
 modelList2 <- caretList(
   formula2, data = alltrain,
   trControl=trCtr_grid,
@@ -670,9 +667,9 @@ Results are:
 
 - Sigle decision tree: 0.77511
 
-# Using another set of predictions
+# Using another set of predictions --------------------------------------------------------------
 
-```{r}
+```{r, eval = FALSE}
 formula3 <- as.formula(Survived ~ Pclass +
                         Groupsize + Age + Sex +
                         Fare + Embarked)
