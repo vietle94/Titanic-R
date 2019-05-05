@@ -3,12 +3,7 @@ title: "Titanic analysis"
 output: 
   rmarkdown::github_document
 ---
-<style>
-    body .main-container {
-        max-width: 2900px;
-    }
-    div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
-</style>
+
 
 ```{r, echo = FALSE}
 knitr::opts_chunk$set(
@@ -23,6 +18,9 @@ library(doParallel)
 library(caret)
 library(lubridate)
 library(patchwork)
+library(caretEnsemble)
+library(pROC)
+library(partykit)
 ```
 
 # Load data
@@ -240,14 +238,14 @@ combined[is.na(combined$Age) & combined$Title == "Mrs",]$Age <- mean(combined[1:
 combined[is.na(combined$Age) & combined$Title == "Others",]$Age <- mean(combined[1:intrain,][combined[1:intrain,]$Title == "Others",]$Age, na.rm = T)
 ```
 
-## Impute Embarked 
+## Impute Embarked by median 
 
 ```{r}
 combined[is.na(combined$Embarked),]$Embarked <- "S"
 
 ```
 
-## Impute Fare 
+## Impute Fare by mean
 
 ```{r}
 
@@ -263,7 +261,7 @@ combined <- combined %>% mutate(Familyname = str_extract(Name, "^.+,")) %>%
 
 ```
 
-## Transform Fare 
+## Transform Fare to log(Fare)
 
 ```{r}
 combined <- combined %>% mutate(Fare = log10(Fare +1))
@@ -286,6 +284,8 @@ combined <- combined %>% group_by(Ticket, Familyname) %>% mutate(nAll = n()) %>%
   ungroup() %>% group_by(Familyname) %>% mutate(nFamilyname = n()) %>% 
   ungroup() %>% mutate(Groupsize = nTicket + nFamilyname - nAll) 
 
+combined <- combined %>% select(-nTicket, -nFamilyname)
+
 ```
 
 How this new groupsize predictor look
@@ -303,7 +303,7 @@ combined[1:intrain,] %>%
 ```
 Some pattern but not really clear.
 
-# Final look --------------------------------------------------------------
+## Final look 
 
 ```{r}
 glimpse(combined)
@@ -311,109 +311,243 @@ glimpse(combined)
 ```
 
 
-# Remove bad columns ---------------------------------------------
+# Training --------------------------------------------------------------
+
+## Separate train and test set since we are done with Data transformation
+
+Separate 20% of the train set into holdout set to evaluate the models, it is more convenient than using using upload test set to Kaggle everytime.
 
 ```{r}
-combined <- combined %>% select(-PassengerId, -Name, -Cabin, -SibSp, -Parch, -Ticket, -Familyname, -nFamilyname, -nAll, -nTicket)
-
-combined <- combined %>% select(-MissingAge, -Embarked)
-
-```
-
-
-# Dummy coded columns -------------------------------------------------------------
-
-```{r}
-dummy <- dummyVars(~., data = combined[,-1]) 
-dummy_combined <- predict(dummy, newdata = combined[,-1]) %>% as_tibble()
-dummy_combined$Survived <- combined$Survived
-dummy_combined <- dummy_combined %>% 
-  select(Survived, everything())
-
-```
-
-
-# Prepare model building ----------------------------------------------------------
-```{r}
-set.seed(99999)
+set.seed(12345)
 notinholdout <- createDataPartition(train0$Survived, p = 0.8, list = F)
-length(notinholdout)
 
+alltrain <- combined[1:intrain, ]
+
+train <- combined[1:intrain, ] %>% slice(notinholdout) 
+holdout <- combined[1:intrain, ] %>% slice(-notinholdout) 
+
+test <- combined[-(1:intrain), ]
 ```
 
 
-# train and test set
+## Validation folds 
+
+5 times repeated 10 folds is used to evaluate model's parameters. It is usually specified inside the trainControl but separate this step is a requirement for caretEnsemble to make sure all folds are consistent for ensemble. 
+
 ```{r}
-alltrain <- dummy_combined[1:intrain,]
-train <- dummy_combined[1:intrain,] %>% slice(notinholdout) 
-holdout <- dummy_combined[1:intrain,] %>% slice(-notinholdout) 
-test <- dummy_combined[-(1:intrain),]
-```
-
-
-
-
-# Validation folds --------------------------------------------------------------
 
 index <- createMultiFolds(train$Survived, k = 10, times = 5)
 
-# Traincontrol ------------------------------------------------------------
-# Index takes over other parameters, supply them just to get the labels right
+```
 
-trCtr <- trainControl(method = "repeatedcv", repeats = 5, number = 10, 
-                      index = index, verboseIter=TRUE, classProbs = T)
+## Traincontrol 
 
-trCtr_search <- trainControl(method = "repeatedcv", repeats = 5, number = 5, 
-                             index = index, savePredictions = "final", summaryFunction = twoClassSummary,
-                             search = "random", verboseIter=TRUE, classProbs = T)
+The index will take over other parameters, supply them just to get the labels right. We will use the metric ROC for this, so twoClassSummary and classProbs must be specified
+
+```{r}
+
+trCtr_grid <- trainControl(method = "repeatedcv", repeats = 5, 
+                           number = 5, 
+                           index = index, savePredictions = "final", summaryFunction = twoClassSummary,
+                           search = "grid", # By default  
+                           verboseIter=TRUE, classProbs = T)
+                             
 trCtr_none <- trainControl(method = "none", classProbs = T)
 
+```
+=
+## Setup parallel computing
 
+```{r}
 cl <- makeCluster(7)
 registerDoParallel(cl)
 
-# Get model info ----------------------------------------------------------
+```
 
+## Get model info if needed 
+
+```{r}
 getModelInfo()$xgbTree$parameters
 
-# Formula ----------------------------------------------------------------
+```
 
-colnames(dummy_combined)
-formula <- as.formula(Survived ~ .)
+## Choose Hyperparameters
 
+```{r}
+C5.0grid <- expand.grid(.trials = c(1:9, (1:10)*10),
+                       .model = c("tree", "rules"),
+                       .winnow = c(TRUE, FALSE))
 
-# Train -------------------------------------------------------------------
+SVMgrid <- expand.grid(sigma = c(0, 0.01, 0.04, 0.2),
+                       C= c(seq(0,1,0.2),10,500))
+                      
+XGBgrid <- expand.grid(nrounds = 100, # Fixed. depend on datasize
+                       max_depth = 6, # More will make model more complex and more likely to overfit. Choose only this due to computational barrier
+                       eta = c(0.01,0.05, 0.1), # NEED FINE TUNE
+                       gamma = 0, # it is usually OK to leave at 0
+                       min_child_weight = c(1,2,3), # The higher value, the more conservative model is, NEED FINE TUNE
+                       colsample_bytree = c(.4, .7, 1), # subsample by columns
+                       subsample = 1) # subsample by row leave at 1 since we doing k-fold
 
-rf <- train(formula, data = alltrain, trControl = trCtr_search, method = "rf",
-             tuneLength = 10)
-xgb <- train(formula, data = alltrain, trControl = trCtr_search, method = "xgbTree",
-             tuneLength = 20)
+rpartgrid <- expand.grid(cp = runif(30,0,0.5))
 
-SVM <- train(formula, data = alltrain, trControl = trCtr_search, method = "svmRadial",
-             metric = "ROC",
-             preProcess = c("center", "scale"), tuneLength = 20)
+rfgrid <- expand.grid(mtry = 1:8)
 
-rpart <- train(formula, data = alltrain, trControl = trCtr_search, method = "rpart",
-               tuneLength = 20)
-
-C5.0 <- train(formula, data = alltrain, trControl = trCtr_search, method = "C5.0",
-               tuneLength = 20)
-
-plot(partykit::as.party(C5.0$finalModel))
-plot(partykit::as.party(rpart$finalModel))
-plot(varImp(rf))
-
-plot(varImp(xgb))
+```
 
 
-# final -------------------------------------------------------------------
+## Train models
 
-all <- list(xgb = xgb, rf = rf, SVM = SVM)
-all <- list(SVM = SVM)
+Choose predictors  
+
+```{r}
+
+formula <- as.formula(Survived ~ Pclass + Sex + Title +
+                        Age + MissingAge + SibSp + Parch + Groupsize + 
+                        Fare + Embarked)
+
+```
+
+We will use caret ensemble for easy training
+
+```{r}
+set.seed(67659)
+
+modelList <- caretList(
+  formula, data = train,
+  trControl=trCtr_grid,
+  metric = "ROC",
+  tuneList=list(
+    rf=caretModelSpec(method="rf", tuneGrid= rfgrid),
+    SVM=caretModelSpec(method="svmRadial", tuneGrid = SVMgrid,
+                       preProcess = c("scale", "center")),
+    xgb=caretModelSpec(method="xgbTree", tuneGrid = XGBgrid),
+    rpart= caretModelSpec(method = "rpart", tuneGrid = rpartgrid),
+    C5.0 = caretModelSpec(method = "C5.0", tuneGrid = C5.0grid)
+    )
+)
+```
+
+# Evaluation
+
+## Evaluate in train data
+
+```{r}
+dotplot(resamples(modelList))
+```
+
+- rpart seems to be the worst model.
+
+Let's see if there is any significant different between them
+
+```{r}
+diff(resamples(modelList), metric = "ROC") %>% summary()
+```
+
+- from here we can see that rpart and SVM are actually worse than the rest of models.
+
+Any correlation between models
+
+```{r}
+modelCor(resamples(modelList))
+```
+
+- all model are all correlated, which might not results in any improvement when trying to ensemble models. This is not unexpected as those model are quite strong. So we will not use any ensemble for now.
+
+Let's have a look at Importance of predictors in tree-based model
+
+```{r}
+ggplot(varImp(modelList$rf)) + labs(title = "Random Forest") +
+ggplot(varImp(modelList$C5.0)) + labs(title = "C5.0") +
+ggplot(varImp(modelList$xgb)) + labs(title = "XGB") +
+ggplot(varImp(modelList$rpart)) + labs(title = "rpart")
+
+```
+
+MissingAge predictors does not seem to do well across most models, in contrast, Groupsize perform really well.
+
+<br>
+
+Let's visualize a tree in rpart model
+
+```{r}
+plot(as.party(modelList$rpart$finalModel))
+```
+
+What a simple tree that can achieve almost 80% accuracy on unseen data (next part)
+
+## Evaluate in holdout data
+
+Accuracy check:
+
+```{r}
+
+map(modelList, ~predict(., newdata = holdout)) %>% 
+  map( ~ confusionMatrix(holdout$Survived, .)) %>% 
+  map_df(~.$overall["Accuracy"])
+
+```
+
+ROC and AUC
+
+```{r}
+modROC <- map(modelList, ~predict(. , newdata = holdout, type = "prob")) %>% 
+  map(~roc(predictor = .x$Lived,
+           response = holdout$Survived,
+           levels = rev(levels(holdout$Survived)),
+           print.auc = TRUE)
+)
+
+aucROC <- modROC %>% map_df(~.$auc) %>% gather(key = "model", value = "ROC") %>%
+  arrange(desc(ROC)) %>%
+  mutate(ROC = round(ROC, digits = 3)) %>% unite("auc", model, ROC, sep = "'s AUC: ") %>% 
+  pull() %>% str_c(collapse = "\n")
+
+ggroc(modROC) + geom_text(aes(x = 0.5, y = 0.5, label = aucROC), color = "black") + scale_color_discrete(name = "Model")
+
+
+```
+
+
+Ranking on best performance:
+
+1. C5.0
+
+2. Random Forest
+
+3. Extreme gradient boosting
+4. Supportive vector machines
+
+5. Decision tree
+
+
+## Evaluate on test data
+
+Extract best tunes from models then train them again using all training data with no resampling method. After that, predict data on test data and print csv out to put on kaggle
+
+```{r}
+set.seed(6759)
+
+rf_f <- train(formula, data = alltrain, trControl = trCtr_none, method = "rf",
+              tuneGrid = modelList$rf$bestTune)
+
+SVM_f <- train(formula, data = alltrain, trControl = trCtr_none, method = "svmRadial",
+               tuneGrid = modelList$SVM$bestTune, preProcess = c("scale", "center"))
+
+xgb_f <- train(formula, data = alltrain, trControl = trCtr_none, method = "xgbTree",
+               tuneGrid = modelList$xgb$bestTune)
+
+rpart_f <- train(formula, data = alltrain, trControl = trCtr_none, method = "rpart",
+                 tuneGrid = modelList$rpart$bestTune)
+
+C5.0_f <- train(formula, data = alltrain, trControl = trCtr_none, method = "C5.0",
+                tuneGrid = modelList$C5.0$bestTune)
+
+all <- list(rf = rf_f, SVM = SVM_f, xgb = xgb_f, rpart = rpart_f, C5.0 = C5.0_f)
 
 finaltest <- predict(all, newdata = test, na.action = na.pass)
 
-prefix <- "groupsize_all_imp_ROC"
+prefix <- "all_ROC"
 
 for (i in names(finaltest)){
   bind_cols(PassengerID = test0$PassengerId, Survived = finaltest[[i]]) %>% 
@@ -421,11 +555,154 @@ for (i in names(finaltest)){
     write_csv(str_c("./prediction/", prefix,"_" ,i,"_", today(), ".csv"))
 }
 
-best
+```
 
-# PLOT
+Results are
+
+- Extreme Gradient Boosting at 0.77990
+
+- Supportive Vector Machines at 0.78947
+
+- Random Forest at 0.76555
+
+- C5.0 at 0.78468
+
+- Single Decision tree at 0.77511
+
+# Using other set of predictors
+
+Let's see if we can improve the results from test set by using other set of predictors on to train on all data available
 
 ```{r}
-combined %>% ggplot() + geom_bar(aes(Age))
+
+formula1 <- as.formula(Survived ~ Pclass + Sex + Title +
+                        Groupsize + 
+                        Fare + Embarked)
+
+
+set.seed(67659)
+
+modelList1 <- caretList(
+  formula1, data = alltrain,
+  trControl=trCtr_grid,
+  metric = "ROC",
+  tuneList=list(
+    rf=caretModelSpec(method="rf", tuneGrid= rfgrid),
+    SVM=caretModelSpec(method="svmRadial", tuneGrid = SVMgrid,
+                       preProcess = c("scale", "center")),
+    xgb=caretModelSpec(method="xgbTree", tuneGrid = XGBgrid),
+    rpart= caretModelSpec(method = "rpart", tuneGrid = rpartgrid),
+    C5.0 = caretModelSpec(method = "C5.0", tuneGrid = C5.0grid)
+    )
+)
+
+finaltest <- modelList1 %>% map(~ predict(., newdata = test, na.action = na.pass))
+
+prefix <- "all_ROC_1"
+
+for (i in names(finaltest)){
+  bind_cols(PassengerID = test0$PassengerId, Survived = finaltest[[i]]) %>% 
+    mutate(Survived = fct_recode(Survived, "1" = "Lived", "0" = "Died")) %>% 
+    write_csv(str_c("./prediction/", prefix,"_" ,i,"_", today(), ".csv"))
+}
+```
+
+Results are:
+
+- Extreme Gradient Boosting: 0.77511
+
+- Supportive vector machine: 0.79904
+
+- Random Forest: 0.80382
+
+- C5.0: 0.77511
+
+- Sigle decision tree: 0.77511
+
+We can see a significant increase in accuracy using Random Forest with less predictors hence less overfitting. A slight improvement can be observed in other models except for C5.0
+
+# Using other set of predictors
+
+```{r}
+
+formula2 <- as.formula(Survived ~ Pclass + Title +
+                        Groupsize + 
+                        Fare + Embarked)
+
+
+set.seed(67659)
+
+modelList2 <- caretList(
+  formula2, data = alltrain,
+  trControl=trCtr_grid,
+  metric = "ROC",
+  tuneList=list(
+    rf=caretModelSpec(method="rf", tuneGrid= rfgrid),
+    SVM=caretModelSpec(method="svmRadial", tuneGrid = SVMgrid,
+                       preProcess = c("scale", "center")),
+    xgb=caretModelSpec(method="xgbTree", tuneGrid = XGBgrid),
+    rpart= caretModelSpec(method = "rpart", tuneGrid = rpartgrid),
+    C5.0 = caretModelSpec(method = "C5.0", tuneGrid = C5.0grid)
+    )
+)
+
+finaltest <- modelList2 %>% map(~ predict(., newdata = test, na.action = na.pass))
+
+prefix <- "all_ROC_2"
+
+for (i in names(finaltest)){
+  bind_cols(PassengerID = test0$PassengerId, Survived = finaltest[[i]]) %>% 
+    mutate(Survived = fct_recode(Survived, "1" = "Lived", "0" = "Died")) %>% 
+    write_csv(str_c("./prediction/", prefix,"_" ,i,"_", today(), ".csv"))
+}
+
+```
+
+Results are:
+
+- Extreme Gradient Boosting: 0.78468
+
+- Supportive vector machine: 0.80382
+
+- Random Forest: 0.80382
+
+- C5.0: 0.78468
+
+- Sigle decision tree: 0.77511
+
+# Using another set of predictions
+
+```{r}
+formula3 <- as.formula(Survived ~ Pclass +
+                        Groupsize + Age + Sex +
+                        Fare + Embarked)
+
+
+set.seed(67659)
+
+modelList3 <- caretList(
+  formula3, 
+  data = alltrain,
+  trControl=trCtr_grid,
+  metric = "ROC",
+  tuneList=list(
+    rf=caretModelSpec(method="rf", tuneGrid= rfgrid),
+    SVM=caretModelSpec(method="svmRadial", tuneGrid = SVMgrid,
+                       preProcess = c("scale", "center")),
+    xgb=caretModelSpec(method="xgbTree", tuneGrid = XGBgrid),
+    rpart= caretModelSpec(method = "rpart", tuneGrid = rpartgrid),
+    C5.0 = caretModelSpec(method = "C5.0", tuneGrid = C5.0grid)
+    )
+)
+
+finaltest <- modelList3 %>% map(~ predict(., newdata = test, na.action = na.pass))
+
+prefix <- "all_ROC_3"
+
+for (i in names(finaltest)){
+  bind_cols(PassengerID = test0$PassengerId, Survived = finaltest[[i]]) %>% 
+    mutate(Survived = fct_recode(Survived, "1" = "Lived", "0" = "Died")) %>% 
+    write_csv(str_c("./prediction/", prefix,"_" ,i,"_", today(), ".csv"))
+}
 ```
 
