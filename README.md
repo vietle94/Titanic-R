@@ -759,3 +759,62 @@ Using another set of predictions ———————————————�
         mutate(Survived = fct_recode(Survived, "1" = "Lived", "0" = "Died")) %>% 
         write_csv(str_c("./prediction/", prefix,"_" ,i,"_", today(), ".csv"))
     }
+
+Results are:
+
+-   Extreme Gradient Boosting: 0.77033
+
+-   Supportive vector machine: 0.78468
+
+-   Random Forest: 0.79904
+
+-   C5.0: 0.76076
+
+-   Sigle decision tree: 0.77511
+
+Make other predictor ——–
+========================
+
+    alltrain <- alltrain %>% mutate(Title = ifelse(Age < 15, "Kid", Title))
+    test <- test %>% mutate(Title = ifelse(Age < 15, "Kid", Title))
+
+    formula4 <- as.formula(Survived ~ Pclass + Title +
+                             Groupsize + 
+                            Fare + Embarked)
+
+    set.seed(67659)
+    modelList4 <- caretList(
+      formula4, data = alltrain,
+      trControl=trCtr_grid,
+      metric = "ROC",
+      tuneList=list(
+        rf=caretModelSpec(method="rf", tuneGrid= rfgrid),
+        SVM=caretModelSpec(method="svmRadial", tuneGrid = SVMgrid,
+                           preProcess = c("scale", "center")),
+        xgb=caretModelSpec(method="xgbTree", tuneGrid = XGBgrid),
+        rpart= caretModelSpec(method = "rpart", tuneGrid = rpartgrid),
+        C5.0 = caretModelSpec(method = "C5.0", tuneGrid = C5.0grid)
+        )
+    )
+
+    finaltest <- modelList4 %>% map(~ predict(., newdata = test, na.action = na.pass))
+
+    prefix <- "all_ROC_4"
+
+    for (i in names(finaltest)){
+      bind_cols(PassengerID = test0$PassengerId, Survived = finaltest[[i]]) %>% 
+        mutate(Survived = fct_recode(Survived, "1" = "Lived", "0" = "Died")) %>% 
+        write_csv(str_c("./prediction/", prefix,"_" ,i,"_", today(), ".csv"))
+    }
+
+Results are:
+
+-   Extreme Gradient Boosting: 0.79425
+
+-   Supportive vector machine: 0.78947
+
+-   Random Forest: 0.78947
+
+-   C5.0: 0.80382
+
+-   Sigle decision tree: 0.77511
